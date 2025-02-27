@@ -29,35 +29,36 @@ from lib_controlnet.enums import (
     PuLIDMode,
     ControlNetUnionControlType,
 )
+from modules_forge.forge_canvas.canvas import ForgeCanvas
 
 
 @dataclass
 class A1111Context:
     """Contains all components from A1111."""
 
-    img2img_batch_input_dir: Optional[gr.components.IOComponent] = None
-    img2img_batch_output_dir: Optional[gr.components.IOComponent] = None
-    txt2img_submit_button: Optional[gr.components.IOComponent] = None
-    img2img_submit_button: Optional[gr.components.IOComponent] = None
+    img2img_batch_input_dir: Optional[gr.components.Component] = None
+    img2img_batch_output_dir: Optional[gr.components.Component] = None
+    txt2img_submit_button: Optional[gr.components.Component] = None
+    img2img_submit_button: Optional[gr.components.Component] = None
 
     # Slider controls from A1111 WebUI.
-    txt2img_w_slider: Optional[gr.components.IOComponent] = None
-    txt2img_h_slider: Optional[gr.components.IOComponent] = None
-    img2img_w_slider: Optional[gr.components.IOComponent] = None
-    img2img_h_slider: Optional[gr.components.IOComponent] = None
+    txt2img_w_slider: Optional[gr.components.Component] = None
+    txt2img_h_slider: Optional[gr.components.Component] = None
+    img2img_w_slider: Optional[gr.components.Component] = None
+    img2img_h_slider: Optional[gr.components.Component] = None
 
-    img2img_img2img_tab: Optional[gr.components.IOComponent] = None
-    img2img_img2img_sketch_tab: Optional[gr.components.IOComponent] = None
-    img2img_batch_tab: Optional[gr.components.IOComponent] = None
-    img2img_inpaint_tab: Optional[gr.components.IOComponent] = None
-    img2img_inpaint_sketch_tab: Optional[gr.components.IOComponent] = None
-    img2img_inpaint_upload_tab: Optional[gr.components.IOComponent] = None
+    img2img_img2img_tab: Optional[gr.components.Component] = None
+    img2img_img2img_sketch_tab: Optional[gr.components.Component] = None
+    img2img_batch_tab: Optional[gr.components.Component] = None
+    img2img_inpaint_tab: Optional[gr.components.Component] = None
+    img2img_inpaint_sketch_tab: Optional[gr.components.Component] = None
+    img2img_inpaint_upload_tab: Optional[gr.components.Component] = None
 
-    img2img_inpaint_area: Optional[gr.components.IOComponent] = None
-    txt2img_enable_hr: Optional[gr.components.IOComponent] = None
+    img2img_inpaint_area: Optional[gr.components.Component] = None
+    txt2img_enable_hr: Optional[gr.components.Component] = None
 
     @property
-    def img2img_inpaint_tabs(self) -> Tuple[gr.components.IOComponent]:
+    def img2img_inpaint_tabs(self) -> Tuple[gr.components.Component]:
         return (
             self.img2img_inpaint_tab,
             self.img2img_inpaint_sketch_tab,
@@ -65,7 +66,7 @@ class A1111Context:
         )
 
     @property
-    def img2img_non_inpaint_tabs(self) -> Tuple[gr.components.IOComponent]:
+    def img2img_non_inpaint_tabs(self) -> Tuple[gr.components.Component]:
         return (
             self.img2img_img2img_tab,
             self.img2img_img2img_sketch_tab,
@@ -89,7 +90,7 @@ class A1111Context:
             if name not in optional_components.values()
         )
 
-    def set_component(self, component: gr.components.IOComponent):
+    def set_component(self, component: gr.components.Component):
         id_mapping = {
             "img2img_batch_input_dir": "img2img_batch_input_dir",
             "img2img_batch_output_dir": "img2img_batch_output_dir",
@@ -266,36 +267,26 @@ class ControlNetUiGroup(object):
                 with gr.Tab(label="Single Image") as self.upload_tab:
                     with gr.Row(elem_classes=["cnet-image-row"], equal_height=True):
                         with gr.Group(elem_classes=["cnet-input-image-group"]):
-                            self.image = gr.Image(
-                                source="upload",
-                                brush_radius=20,
-                                mirror_webcam=False,
-                                type="numpy",
-                                tool="sketch",
+                            self.image = ForgeCanvas(
                                 elem_id=f"{elem_id_tabname}_{tabname}_input_image",
                                 elem_classes=["cnet-image"],
-                                brush_color=shared.opts.img2img_inpaint_mask_brush_color
-                                if hasattr(
-                                    shared.opts, "img2img_inpaint_mask_brush_color"
-                                )
-                                else None,
-                            )
-                            self.image.preprocess = functools.partial(
-                                svg_preprocess, preprocess=self.image.preprocess
+                                contrast_scribbles=True,
+                                height=300,
+                                numpy=True
                             )
                             self.openpose_editor.render_upload()
 
                         with gr.Group(
                             visible=False, elem_classes=["cnet-generated-image-group"]
                         ) as self.generated_image_group:
-                            self.generated_image = gr.Image(
-                                value=None,
-                                label="Preprocessor Preview",
+                            self.generated_image = ForgeCanvas(
                                 elem_id=f"{elem_id_tabname}_{tabname}_generated_image",
                                 elem_classes=["cnet-image"],
-                                interactive=True,
-                                height=242,
-                            )  # Gradio's magic number. Only 242 works.
+                                height=300,
+                                no_scribbles=True,
+                                no_upload=True,
+                                numpy=True
+                            )
 
                             with gr.Group(
                                 elem_classes=["cnet-generated-image-control-group"]
@@ -314,20 +305,16 @@ class ControlNetUiGroup(object):
                         with gr.Group(
                             visible=False, elem_classes=["cnet-mask-image-group"]
                         ) as self.mask_image_group:
-                            self.mask_image = gr.Image(
-                                value=None,
-                                label="Mask",
+                            self.mask_image = ForgeCanvas(
                                 elem_id=f"{elem_id_tabname}_{tabname}_mask_image",
                                 elem_classes=["cnet-mask-image"],
-                                interactive=True,
-                                brush_radius=20,
-                                type="numpy",
-                                tool="sketch",
-                                brush_color=shared.opts.img2img_inpaint_mask_brush_color
-                                if hasattr(
-                                    shared.opts, "img2img_inpaint_mask_brush_color"
-                                )
-                                else None,
+                                height=300,
+                                scribble_color='#FFFFFF',
+                                scribble_width=1,
+                                scribble_alpha_fixed=True,
+                                scribble_color_fixed=True,
+                                scribble_softness_fixed=True,
+                                numpy=True
                             )
 
                 with gr.Tab(label="Batch Folder") as self.batch_tab:

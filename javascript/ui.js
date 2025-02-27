@@ -125,8 +125,14 @@ function create_submit_args(args) {
     // This can lead to uploading a huge gallery of previously generated images, which leads to an unnecessary delay between submitting and beginning to generate.
     // I don't know why gradio is sending outputs along with inputs, but we can prevent sending the image gallery here, which seems to be an issue for some.
     // If gradio at some point stops sending outputs, this may break something
-    if (Array.isArray(res[res.length - 3])) {
-        res[res.length - 3] = null;
+    if (Array.isArray(res[res.length - 4])) {
+        //res[res.length - 4] = null;
+        // simply drop output args
+        res = res.slice(0, res.length - 4);
+    } else if (Array.isArray(res[res.length - 3])) {
+        // for submit_extras()
+        //res[res.length - 3] = null;
+        res = res.slice(0, res.length - 3);
     }
 
     return res;
@@ -382,8 +388,8 @@ function selectCheckpoint(name) {
 }
 
 function currentImg2imgSourceResolution(w, h, scaleBy) {
-    var img = gradioApp().querySelector('#mode_img2img > div[style="display: block;"] img');
-    return img ? [img.naturalWidth, img.naturalHeight, scaleBy] : [0, 0, scaleBy];
+    var img = gradioApp().querySelector('#mode_img2img > div[style="display: block;"] :is(img, canvas)');
+    return img ? [img.naturalWidth || img.width, img.naturalHeight || img.height, scaleBy] : [0, 0, scaleBy];
 }
 
 function updateImg2imgResizeToTextAfterChangingImage() {

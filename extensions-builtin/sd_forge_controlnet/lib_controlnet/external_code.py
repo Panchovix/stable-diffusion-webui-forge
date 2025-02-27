@@ -192,7 +192,7 @@ class ControlNetUnit:
     ## If the new field can be specified on UI, you need to
     - Add a new field of the same name in constructor of `ControlNetUiGroup`
     - Initialize the new `ControlNetUiGroup` field in `ControlNetUiGroup.render`
-      as a Gradio `IOComponent`.
+      as a Gradio `Component`.
     - Add the new `ControlNetUiGroup` field to `unit_args` in
       `ControlNetUiGroup.render`. The order of parameters matters.
 

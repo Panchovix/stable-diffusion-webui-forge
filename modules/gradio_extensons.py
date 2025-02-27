@@ -1,10 +1,16 @@
-import gradio as gr
-from gradio import processing_utils
+import inspect
+import types
 import warnings
-import PIL.ImageOps
+from functools import wraps
+
+import gradio as gr
+import gradio.component_meta
+
 
 from modules import scripts, ui_tempdir, patches
 
+class GradioDeprecationWarning(DeprecationWarning):
+    pass
 
 def add_classes_to_gradio_component(comp):
     """
@@ -17,7 +23,7 @@ def add_classes_to_gradio_component(comp):
         comp.elem_classes.append('multiselect')
 
 
-def IOComponent_init(self, *args, **kwargs):
+def Component_init(self, *args, **kwargs):
     self.webui_tooltip = kwargs.pop('tooltip', None)
 
     if scripts.scripts_current is not None:
@@ -25,7 +31,7 @@ def IOComponent_init(self, *args, **kwargs):
 
     scripts.script_callbacks.before_component_callback(self, **kwargs)
 
-    res = original_IOComponent_init(self, *args, **kwargs)
+    res = original_Component_init(self, *args, **kwargs)
 
     add_classes_to_gradio_component(self)
 
@@ -77,75 +83,96 @@ def Blocks_get_config_file(self, *args, **kwargs):
     return config
 
 
-def Image_upload_handler(self, x):
-    """Handles conversion of uploaded images to RGB"""
-    if isinstance(x, dict) and 'image' in x:
-        output_image = x['image'].convert('RGB')
-        return output_image
-    return x
 
-def Image_custom_preprocess(self, x):
-    """Custom preprocessing for images with masks"""
-    if x is None:
-        return x
-        
-    mask = ""
-    if self.tool == "sketch" and self.source in ["upload", "webcam"]:
-        if isinstance(x, dict):
-            x, mask = x["image"], x["mask"]
-            
-    if not isinstance(x, str):
-        return x
-        
-    im = processing_utils.decode_base64_to_image(x)
-    
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        im = im.convert(self.image_mode)
-        
-    if self.shape is not None:
-        im = processing_utils.resize_and_crop(im, self.shape)
-        
-    if self.invert_colors:
-        im = PIL.ImageOps.invert(im)
-        
-    if (self.source == "webcam" 
-        and self.mirror_webcam is True 
-        and self.tool != "color-sketch"):
-        im = PIL.ImageOps.mirror(im)
-        
-    if self.tool == "sketch" and self.source in ["upload", "webcam"]:
-        mask_im = None
-        if mask is not None:
-            mask_im = processing_utils.decode_base64_to_image(mask)
-        return {
-            "image": self._format_image(im),
-            "mask": self._format_image(mask_im)
-        }
-        
-    return self._format_image(im)
-
-def Image_init_extension(self, *args, **kwargs):
-    """Extended initialization for Image components"""
-    res = original_Image_init(self, *args, **kwargs)
-    
-    # Only apply to inpaint with mask component for now
-    if getattr(self, 'elem_id', None) == 'img2maskimg':
-        self.upload(
-            fn=Image_upload_handler.__get__(self, gr.Image),
-            inputs=self,
-            outputs=self
-        )
-        self.preprocess = Image_custom_preprocess.__get__(self, gr.Image)
-    
-    return res
-
-
-original_IOComponent_init = patches.patch(__name__, obj=gr.components.IOComponent, field="__init__", replacement=IOComponent_init)
+original_Component_init = patches.patch(__name__, obj=gr.components.Component, field="__init__", replacement=Component_init)
 original_Block_get_config = patches.patch(__name__, obj=gr.blocks.Block, field="get_config", replacement=Block_get_config)
 original_BlockContext_init = patches.patch(__name__, obj=gr.blocks.BlockContext, field="__init__", replacement=BlockContext_init)
 original_Blocks_get_config_file = patches.patch(__name__, obj=gr.blocks.Blocks, field="get_config_file", replacement=Blocks_get_config_file)
-original_Image_init = patches.patch(__name__, obj=gr.components.Image, field="__init__", replacement=Image_init_extension)
 
 
 ui_tempdir.install_ui_tempdir_override()
+
+def gradio_component_meta_create_or_modify_pyi(component_class, class_name, events):
+    if hasattr(component_class, 'webui_do_not_create_gradio_pyi_thank_you'):
+        return
+
+    gradio_component_meta_create_or_modify_pyi_original(component_class, class_name, events)
+
+
+# this prevents creation of .pyi files in webui dir
+gradio_component_meta_create_or_modify_pyi_original = patches.patch(__file__, gradio.component_meta, 'create_or_modify_pyi', gradio_component_meta_create_or_modify_pyi)
+
+# this function is broken and does not seem to do anything useful
+gradio.component_meta.updateable = lambda x: x
+
+
+class EventWrapper:
+    def __init__(self, replaced_event):
+        self.replaced_event = replaced_event
+        self.has_trigger = getattr(replaced_event, 'has_trigger', None)
+        self.event_name = getattr(replaced_event, 'event_name', None)
+        self.callback = getattr(replaced_event, 'callback', None)
+        self.real_self = getattr(replaced_event, '__self__', None)
+
+    def __call__(self, *args, **kwargs):
+        if '_js' in kwargs:
+            kwargs['js'] = kwargs['_js']
+            del kwargs['_js']
+        return self.replaced_event(*args, **kwargs)
+
+    @property
+    def __self__(self):
+        return self.real_self
+
+
+def repair(grclass):
+    if not getattr(grclass, 'EVENTS', None):
+        return
+
+    @wraps(grclass.__init__)
+    def __repaired_init__(self, *args, tooltip=None, source=None, original=grclass.__init__, **kwargs):
+        if source:
+            kwargs["sources"] = [source]
+
+        allowed_kwargs = inspect.signature(original).parameters
+        fixed_kwargs = {}
+        for k, v in kwargs.items():
+            if k in allowed_kwargs:
+                fixed_kwargs[k] = v
+            else:
+                warnings.warn(f"unexpected argument for {grclass.__name__}: {k}", GradioDeprecationWarning, stacklevel=2)
+
+        original(self, *args, **fixed_kwargs)
+
+        self.webui_tooltip = tooltip
+
+        for event in self.EVENTS:
+            replaced_event = getattr(self, str(event))
+            fun = EventWrapper(replaced_event)
+            setattr(self, str(event), fun)
+
+    grclass.__init__ = __repaired_init__
+    grclass.update = gr.update
+
+
+for component in set(gr.components.__all__ + gr.layouts.__all__):
+    repair(getattr(gr, component, None))
+
+
+class Dependency(gr.events.Dependency):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        def then(*xargs, js=None, **xkwargs):
+            # if _js:
+            #     xkwargs['js'] = _js
+
+            return original_then(*xargs, **xkwargs)
+
+        original_then = self.then
+        self.then = then
+
+
+gr.events.Dependency = Dependency
+
+gr.Box = gr.Group

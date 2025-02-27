@@ -200,7 +200,7 @@ class ControlNetPresetUI(object):
             show_progress="hidden",
         ).then(
             fn=None,
-            _js=f"""
+            js=f"""
             (name) => {{
                 if (name === "{NEW_PRESET}")
                     popup(gradioApp().getElementById('{self.name_dialog.elem_id}'));
@@ -241,7 +241,7 @@ class ControlNetPresetUI(object):
             inputs=[self.preset_name, *ui_states],
             outputs=[self.name_dialog, self.dropdown],
             show_progress="hidden",
-        ).then(fn=None, _js="closePopup")
+        ).then(fn=None, js="closePopup")
 
         self.refresh_button.click(
             fn=ControlNetPresetUI.refresh_preset,

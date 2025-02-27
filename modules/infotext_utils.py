@@ -158,7 +158,7 @@ def connect_paste_params_buttons():
 
             binding.paste_button.click(
                 fn=func,
-                _js=jsfunc,
+                js=jsfunc,
                 inputs=[binding.source_image_component],
                 outputs=[destination_image_component, destination_width_component, destination_height_component] if need_send_dementions else [destination_image_component],
                 show_progress=False,
@@ -178,7 +178,7 @@ def connect_paste_params_buttons():
 
         binding.paste_button.click(
             fn=None,
-            _js=f"switch_to_{binding.tabname}",
+            js=f"switch_to_{binding.tabname}",
             inputs=None,
             outputs=None,
             show_progress=False,
@@ -393,7 +393,7 @@ Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 965400086, Size: 512x512, Model
 
 
 infotext_to_setting_name_mapping = [
-
+    ('VAE/TE', 'forge_additional_modules'),
 ]
 """Mapping of infotext labels to setting names. Only left for backwards compatibility - use OptionInfo(..., infotext='...') instead.
 Example content:
@@ -405,7 +405,7 @@ infotext_to_setting_name_mapping = [
     ('Schedule type', 'k_sched_type'),
 ]
 """
-
+from ast import literal_eval
 
 def create_override_settings_dict(text_pairs):
     """creates processing's override_settings parameters from gradio's multiselect
@@ -419,6 +419,9 @@ def create_override_settings_dict(text_pairs):
 
     res = {}
 
+    if not text_pairs:
+        return res
+
     params = {}
     for pair in text_pairs:
         k, v = pair.split(":", maxsplit=1)
@@ -430,6 +433,10 @@ def create_override_settings_dict(text_pairs):
         value = params.get(param_name, None)
 
         if value is None:
+            continue
+
+        if setting_name == "forge_additional_modules":
+            res[setting_name] = literal_eval(value)
             continue
 
         res[setting_name] = shared.opts.cast_value(setting_name, value)
@@ -544,7 +551,7 @@ def connect_paste(button, paste_fields, input_comp, override_settings_component,
     )
     button.click(
         fn=None,
-        _js=f"recalculate_prompts_{tabname}",
+        js=f"recalculate_prompts_{tabname}",
         inputs=[],
         outputs=[],
         show_progress=False,
